@@ -83,7 +83,8 @@ router.get('/metadata', async (req, res) => {
             album: metadata.common.album || 'Unknown Album',
             year: metadata.common.year,
             duration: metadata.format.duration,
-            path: filePath
+            path: filePath,
+            chapters: metadata.common.chapters
         });
     } catch (error) {
         console.error('Error getting metadata:', error);
@@ -91,7 +92,7 @@ router.get('/metadata', async (req, res) => {
     }
 });
 
-// Scan directory for MP3 files
+// Scan directory for MP3 and M4B files
 router.post('/scan', async (req, res) => {
     try {
         const dirPath = req.body.path || DEFAULT_MUSIC_DIRS[0];
@@ -100,8 +101,8 @@ router.post('/scan', async (req, res) => {
             return res.status(404).json({ error: 'Directory not found' });
         }
 
-        // Recursively find all MP3 files
-        const mp3Files = [];
+        // Recursively find all audio files
+        const audioFiles = [];
 
         async function scanDir(dir) {
             const items = await fs.readdir(dir);
@@ -112,25 +113,30 @@ router.post('/scan', async (req, res) => {
 
                 if (stats.isDirectory()) {
                     await scanDir(itemPath);
-                } else if (path.extname(itemPath).toLowerCase() === '.mp3') {
-                    try {
-                        const metadata = await mm.parseFile(itemPath);
-                        mp3Files.push({
-                            path: itemPath,
-                            title: metadata.common.title || path.basename(itemPath, '.mp3'),
-                            artist: metadata.common.artist || 'Unknown Artist',
-                            album: metadata.common.album || 'Unknown Album',
-                            duration: metadata.format.duration
-                        });
-                    } catch (err) {
-                        console.error(`Error processing ${itemPath}:`, err);
-                        // Add file with minimal info if metadata parsing fails
-                        mp3Files.push({
-                            path: itemPath,
-                            title: path.basename(itemPath, '.mp3'),
-                            artist: 'Unknown Artist',
-                            album: 'Unknown Album'
-                        });
+                } else {
+                    const ext = path.extname(itemPath).toLowerCase();
+                    if (ext === '.mp3' || ext === '.m4b') {
+                        try {
+                            const metadata = await mm.parseFile(itemPath);
+                            const fileData = {
+                                path: itemPath,
+                                title: metadata.common.title || path.basename(itemPath, ext),
+                                artist: metadata.common.artist || 'Unknown Artist',
+                                album: metadata.common.album || 'Unknown Album',
+                                duration: metadata.format.duration,
+                                chapters: metadata.common.chapters
+                            };
+                            audioFiles.push(fileData);
+                        } catch (err) {
+                            console.error(`Error processing ${itemPath}:`, err);
+                            // Add file with minimal info if metadata parsing fails
+                            audioFiles.push({
+                                path: itemPath,
+                                title: path.basename(itemPath, ext),
+                                artist: 'Unknown Artist',
+                                album: 'Unknown Album'
+                            });
+                        }
                     }
                 }
             }
@@ -140,7 +146,7 @@ router.post('/scan', async (req, res) => {
 
         res.json({
             directory: dirPath,
-            files: mp3Files
+            files: audioFiles
         });
     } catch (error) {
         console.error('Error scanning directory:', error);
@@ -161,6 +167,8 @@ router.get('/stream', (req, res) => {
         const fileSize = stat.size;
         const range = req.headers.range;
 
+        const mimeType = path.extname(filePath).toLowerCase() === '.m4b' ? 'audio/mp4' : 'audio/mpeg';
+
         if (range) {
             const parts = range.replace(/bytes=/, '').split('-');
             const start = parseInt(parts[0], 10);
@@ -173,14 +181,14 @@ router.get('/stream', (req, res) => {
                 'Content-Range': `bytes ${start}-${end}/${fileSize}`,
                 'Accept-Ranges': 'bytes',
                 'Content-Length': chunksize,
-                'Content-Type': 'audio/mpeg'
+                'Content-Type': mimeType
             });
 
             file.pipe(res);
         } else {
             res.writeHead(200, {
                 'Content-Length': fileSize,
-                'Content-Type': 'audio/mpeg'
+                'Content-Type': mimeType
             });
 
             fs.createReadStream(filePath).pipe(res);
