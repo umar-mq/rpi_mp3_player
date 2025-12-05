@@ -20,9 +20,6 @@ class AudioPlayer {
         this.volume = 0.8;
         this.playbackRate = 1.0;
 
-        // Visualizer data
-        this.visualizerType = localStorage.getItem('visualizerType') || 'bars';
-
         // DOM Elements
         this.trackTitleEl = document.getElementById('trackTitle');
         this.trackArtistEl = document.getElementById('trackArtist');
@@ -40,7 +37,10 @@ class AudioPlayer {
         this.volumeSlider = document.getElementById('volumeSlider');
         this.speedSlider = document.getElementById('speedSlider');
         this.speedValue = document.getElementById('speedValue');
-        this.visualizerContainer = document.getElementById('visualizer');
+        this.chaptersBtn = document.getElementById('chaptersBtn');
+        this.chaptersView = document.getElementById('chaptersView');
+        this.chaptersList = document.getElementById('chaptersList');
+        this.backToPlayerBtn = document.getElementById('backToPlayerBtn');
 
         // Initialize
         this.init();
@@ -60,11 +60,14 @@ class AudioPlayer {
         // Event listeners
         this.setupEventListeners();
 
-        // Initialize visualizer
-        this.initVisualizer();
-
         // Update UI
         this.updateControls();
+
+        // Restore playback state
+        this.restorePlaybackState();
+
+        // Setup Media Session
+        this.setupMediaSession();
     }
 
     initAudio() {
@@ -209,11 +212,29 @@ class AudioPlayer {
             this.setTheme(e.target.value);
         });
 
-        // Visualization type selector
-        document.getElementById('visualizationType').addEventListener('change', (e) => {
-            this.visualizerType = e.target.value;
-            localStorage.setItem('visualizerType', this.visualizerType);
-            this.initVisualizer();
+        // Screensaver
+        const screensaverBtn = document.getElementById('screensaverBtn');
+        const screensaver = document.getElementById('screensaver');
+
+        screensaverBtn.addEventListener('click', () => {
+            screensaver.style.display = 'block';
+        });
+
+        const deactivateScreensaver = () => {
+            screensaver.style.display = 'none';
+        };
+
+        screensaver.addEventListener('click', deactivateScreensaver);
+        screensaver.addEventListener('mousemove', deactivateScreensaver);
+        document.addEventListener('keydown', deactivateScreensaver);
+
+        // Chapters view
+        this.chaptersBtn.addEventListener('click', () => {
+            this.showView('chaptersView');
+        });
+
+        this.backToPlayerBtn.addEventListener('click', () => {
+            this.showView('nowPlayingView');
         });
     }
 
@@ -230,6 +251,17 @@ class AudioPlayer {
         this.trackTitleEl.textContent = track.title || 'Unknown Track';
         this.trackArtistEl.textContent = track.artist || 'Unknown Artist';
         this.trackAlbumEl.textContent = track.album || 'Unknown Album';
+
+        // Handle chapters
+        if (track.chapters && track.chapters.length > 0) {
+            this.chaptersBtn.style.display = 'block';
+            this.populateChapters(track.chapters);
+        } else {
+            this.chaptersBtn.style.display = 'none';
+        }
+
+        // Update media session metadata
+        this.updateMediaMetadata();
 
         // Reset progress
         this.updateProgress();
@@ -314,6 +346,14 @@ class AudioPlayer {
 
         // Update seek bar
         this.seekBarEl.value = duration ? (currentTime / duration) * 100 : 0;
+
+        // Save playback state
+        if (this.currentTrack) {
+            localStorage.setItem('playbackState', JSON.stringify({
+                track: this.currentTrack,
+                time: currentTime
+            }));
+        }
     }
 
     handleTrackEnd() {
@@ -364,6 +404,11 @@ class AudioPlayer {
     }
 
     updateControls() {
+        // Update media session
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = this.isPlaying ? 'playing' : 'paused';
+        }
+
         // Update play/pause button
         if (this.isPlaying) {
             this.playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
@@ -409,155 +454,6 @@ class AudioPlayer {
         });
     }
 
-    initVisualizer() {
-        // Clear previous visualizer
-        this.visualizerContainer.innerHTML = '';
-
-        if (this.visualizerType === 'bars') {
-            this.initBarsVisualizer();
-        } else if (this.visualizerType === 'wave') {
-            this.initWaveVisualizer();
-        } else if (this.visualizerType === 'circle') {
-            this.initCircleVisualizer();
-        }
-
-        // Set default visualizer value in settings
-        const visualTypeSelect = document.getElementById('visualizationType');
-        if (visualTypeSelect) {
-            visualTypeSelect.value = this.visualizerType;
-        }
-    }
-
-    initBarsVisualizer() {
-        const container = document.createElement('div');
-        container.className = 'bars-visualizer';
-
-        // Create bars
-        const numBars = 20;
-        for (let i = 0; i < numBars; i++) {
-            const bar = document.createElement('div');
-            bar.className = 'visualizer-bar';
-            container.appendChild(bar);
-        }
-
-        this.visualizerContainer.appendChild(container);
-        this.visualizerBars = Array.from(container.querySelectorAll('.visualizer-bar'));
-
-        // Start animation
-        this.startVisualizerAnimation();
-    }
-
-    initWaveVisualizer() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 240;
-        canvas.height = 240;
-
-        const container = document.createElement('div');
-        container.className = 'wave-visualizer';
-        container.appendChild(canvas);
-
-        this.visualizerContainer.appendChild(container);
-        this.visualizerCanvas = canvas;
-        this.visualizerContext = canvas.getContext('2d');
-
-        // Start animation
-        this.startVisualizerAnimation();
-    }
-
-    initCircleVisualizer() {
-        const container = document.createElement('div');
-        container.className = 'circle-visualizer';
-
-        // Create circles
-        const numCircles = 5;
-        for (let i = 0; i < numCircles; i++) {
-            const circle = document.createElement('div');
-            circle.className = 'visualizer-circle';
-            container.appendChild(circle);
-        }
-
-        this.visualizerContainer.appendChild(container);
-        this.visualizerCircles = Array.from(container.querySelectorAll('.visualizer-circle'));
-
-        // Set initial circle sizes
-        const baseSize = 40;
-        this.visualizerCircles.forEach((circle, i) => {
-            const size = baseSize + (i * 30);
-            circle.style.width = `${size}px`;
-            circle.style.height = `${size}px`;
-        });
-
-        // Start animation
-        this.startVisualizerAnimation();
-    }
-
-    startVisualizerAnimation() {
-        if (!this.analyser) return;
-
-        // Set up animation
-        const bufferLength = this.analyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
-
-        const animate = () => {
-            requestAnimationFrame(animate);
-
-            // Get frequency data
-            this.analyser.getByteFrequencyData(dataArray);
-
-            if (this.visualizerType === 'bars' && this.visualizerBars) {
-                // Update bars
-                const barWidth = 1 / this.visualizerBars.length;
-                this.visualizerBars.forEach((bar, index) => {
-                    const i = Math.floor(index * barWidth * bufferLength);
-                    const value = dataArray[i] || 0;
-                    const height = (value / 255) * 100;
-                    bar.style.height = `${Math.max(4, height)}%`;
-                });
-            } else if (this.visualizerType === 'wave' && this.visualizerContext) {
-                // Update wave
-                const canvas = this.visualizerCanvas;
-                const ctx = this.visualizerContext;
-                const width = canvas.width;
-                const height = canvas.height;
-
-                ctx.clearRect(0, 0, width, height);
-                ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--primary-light');
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-
-                const sliceWidth = width / bufferLength;
-                let x = 0;
-
-                for (let i = 0; i < bufferLength; i++) {
-                    const v = dataArray[i] / 128.0;
-                    const y = v * height / 2;
-
-                    if (i === 0) {
-                        ctx.moveTo(x, y);
-                    } else {
-                        ctx.lineTo(x, y);
-                    }
-
-                    x += sliceWidth;
-                }
-
-                ctx.lineTo(width, height / 2);
-                ctx.stroke();
-            } else if (this.visualizerType === 'circle' && this.visualizerCircles) {
-                // Update circles
-                const maxValue = Math.max(...Array.from(dataArray).slice(0, 10));
-                const scale = (maxValue / 255) * 0.5 + 0.5;
-
-                this.visualizerCircles.forEach((circle, i) => {
-                    circle.style.transform = `scale(${scale})`;
-                    circle.style.opacity = 0.2 + (scale * 0.8);
-                });
-            }
-        };
-
-        animate();
-    }
-
     showNotification(message) {
         // Simple notification
         const notification = document.createElement('div');
@@ -587,6 +483,25 @@ class AudioPlayer {
         localStorage.setItem('theme', theme);
     }
 
+    restorePlaybackState() {
+        const savedState = localStorage.getItem('playbackState');
+        if (savedState) {
+            const { track, time } = JSON.parse(savedState);
+            if (track && time) {
+                this.currentTrack = track;
+                this.audioElement.src = `/api/files/stream?path=${encodeURIComponent(track.path)}`;
+                this.audioElement.load();
+                this.audioElement.currentTime = time;
+
+                this.trackTitleEl.textContent = track.title || 'Unknown Track';
+                this.trackArtistEl.textContent = track.artist || 'Unknown Artist';
+                this.trackAlbumEl.textContent = track.album || 'Unknown Album';
+
+                this.updateProgress();
+            }
+        }
+    }
+
     formatTime(seconds) {
         if (isNaN(seconds) || !isFinite(seconds)) {
             return '0:00';
@@ -595,6 +510,47 @@ class AudioPlayer {
         const mins = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
         return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    setupMediaSession() {
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.setActionHandler('play', () => this.play());
+            navigator.mediaSession.setActionHandler('pause', () => this.pause());
+            navigator.mediaSession.setActionHandler('previoustrack', () => this.playPrevious());
+            navigator.mediaSession.setActionHandler('nexttrack', () => this.playNext());
+        }
+    }
+
+    updateMediaMetadata() {
+        if ('mediaSession' in navigator && this.currentTrack) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: this.currentTrack.title,
+                artist: this.currentTrack.artist,
+                album: this.currentTrack.album,
+                artwork: [
+                    { src: '/img/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+                ]
+            });
+        }
+    }
+
+    populateChapters(chapters) {
+        this.chaptersList.innerHTML = '';
+        chapters.forEach(chapter => {
+            const chapterItem = document.createElement('div');
+            chapterItem.className = 'chapter-item';
+            chapterItem.innerHTML = `
+                <div class="chapter-info">
+                    <div class="chapter-title">${chapter.title}</div>
+                </div>
+                <div class="chapter-time">${this.formatTime(chapter.startTime)}</div>
+            `;
+            chapterItem.addEventListener('click', () => {
+                this.audioElement.currentTime = chapter.startTime;
+                this.showView('nowPlayingView');
+            });
+            this.chaptersList.appendChild(chapterItem);
+        });
     }
 }
 
