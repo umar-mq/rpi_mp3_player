@@ -7,12 +7,14 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <link rel="stylesheet" href="/css/styles.css">
     <link rel="stylesheet" href="/css/keyboard.css">
-    <link rel="stylesheet" href="/css/visualizer.css">
 </head>
 <body>
 <div class="app-container">
     <!-- Header -->
     <header class="app-header">
+        <button id="screensaverBtn" class="icon-btn" title="Screensaver">
+            <i class="fas fa-power-off"></i>
+        </button>
         <h1>MP3 Player</h1>
         <div class="header-controls">
             <button id="bluetoothBtn" class="icon-btn" title="Bluetooth">
@@ -30,9 +32,6 @@
         <section id="nowPlayingView" class="view active-view">
             <div class="now-playing-info">
                 <div class="album-art">
-                    <div id="visualizer" class="visualizer-container">
-                        <!-- Visualizer will be rendered here -->
-                    </div>
                 </div>
                 <div class="track-info">
                     <h2 id="trackTitle" class="track-title">No track playing</h2>
@@ -73,6 +72,9 @@
             </div>
 
             <div class="volume-speed-controls">
+                <button id="chaptersBtn" class="icon-btn" title="Chapters" style="display: none;">
+                    <i class="fas fa-list-ol"></i>
+                </button>
                 <div class="volume-control">
                     <i class="fas fa-volume-down"></i>
                     <input type="range" id="volumeSlider" class="slider" min="0" max="100" value="80">
@@ -83,6 +85,19 @@
                     <input type="range" id="speedSlider" class="slider" min="50" max="150" value="100">
                     <span id="speedValue">1.0x</span>
                 </div>
+            </div>
+        </section>
+
+        <!-- Chapters View -->
+        <section id="chaptersView" class="view">
+            <div class="chapters-header">
+                <button id="backToPlayerBtn" class="icon-btn" title="Back to Player">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                <h2>Chapters</h2>
+            </div>
+            <div id="chaptersList" class="chapters-list">
+                <!-- Chapters will be populated here -->
             </div>
         </section>
 
@@ -192,14 +207,6 @@
                         <option value="light">Light</option>
                     </select>
                 </div>
-                <div class="setting-item">
-                    <span>Visualization Type</span>
-                    <select id="visualizationType">
-                        <option value="bars">Bars</option>
-                        <option value="wave">Wave</option>
-                        <option value="circle">Circle</option>
-                    </select>
-                </div>
             </div>
         </section>
     </main>
@@ -250,6 +257,9 @@
     </nav>
 </div>
 
+<!-- Screensaver -->
+<div id="screensaver" class="screensaver"></div>
+
 <!-- Socket.io -->
 <script src="/socket.io/socket.io.js"></script>
 
@@ -259,6 +269,5 @@
 <script src="/js/playlist.js"></script>
 <script src="/js/bluetooth.js"></script>
 <script src="/js/keyboard.js"></script>
-<script src="/js/visualizer.js"></script>
 </body>
 </html>
