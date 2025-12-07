@@ -19,6 +19,7 @@ class AudioPlayer {
         this.loopMode = 'none'; // 'none', 'one', 'all'
         this.volume = 0.8;
         this.playbackRate = 1.0;
+        this.saveStateInterval = null;
 
         // DOM Elements
         this.trackTitleEl = document.getElementById('trackTitle');
@@ -236,6 +237,8 @@ class AudioPlayer {
         this.backToPlayerBtn.addEventListener('click', () => {
             this.showView('nowPlayingView');
         });
+
+        window.addEventListener('beforeunload', () => this.savePlaybackState());
     }
 
     loadTrack(track) {
@@ -285,6 +288,10 @@ class AudioPlayer {
                     if (this.audioContext.state === 'suspended') {
                         this.audioContext.resume();
                     }
+                    if (this.saveStateInterval) {
+                        clearInterval(this.saveStateInterval);
+                    }
+                    this.saveStateInterval = setInterval(() => this.savePlaybackState(), 15000);
                 })
                 .catch(error => {
                     console.error('Play error:', error);
@@ -296,6 +303,10 @@ class AudioPlayer {
         this.audioElement.pause();
         this.isPlaying = false;
         this.updateControls();
+        if (this.saveStateInterval) {
+            clearInterval(this.saveStateInterval);
+            this.saveStateInterval = null;
+        }
     }
 
     playPrevious() {
@@ -347,13 +358,6 @@ class AudioPlayer {
         // Update seek bar
         this.seekBarEl.value = duration ? (currentTime / duration) * 100 : 0;
 
-        // Save playback state
-        if (this.currentTrack) {
-            localStorage.setItem('playbackState', JSON.stringify({
-                track: this.currentTrack,
-                time: currentTime
-            }));
-        }
     }
 
     handleTrackEnd() {
@@ -483,22 +487,52 @@ class AudioPlayer {
         localStorage.setItem('theme', theme);
     }
 
-    restorePlaybackState() {
-        const savedState = localStorage.getItem('playbackState');
-        if (savedState) {
-            const { track, time } = JSON.parse(savedState);
-            if (track && time) {
-                this.currentTrack = track;
-                this.audioElement.src = `/api/files/stream?path=${encodeURIComponent(track.path)}`;
-                this.audioElement.load();
-                this.audioElement.currentTime = time;
+    async restorePlaybackState() {
+        try {
+            const response = await fetch('/api/files/playback-state');
+            if (response.ok) {
+                const { track, time } = await response.json();
+                if (track && time) {
+                    this.currentTrack = track;
+                    this.audioElement.src = `/api/files/stream?path=${encodeURIComponent(track.path)}`;
+                    this.audioElement.load();
 
-                this.trackTitleEl.textContent = track.title || 'Unknown Track';
-                this.trackArtistEl.textContent = track.artist || 'Unknown Artist';
-                this.trackAlbumEl.textContent = track.album || 'Unknown Album';
+                    const canPlayHandler = () => {
+                        this.audioElement.currentTime = time;
+                        this.updateProgress();
+                        this.pause();
+                        this.audioElement.removeEventListener('canplay', canPlayHandler);
+                    };
+                    this.audioElement.addEventListener('canplay', canPlayHandler);
 
-                this.updateProgress();
+                    this.trackTitleEl.textContent = track.title || 'Unknown Track';
+                    this.trackArtistEl.textContent = track.artist || 'Unknown Artist';
+                    this.trackAlbumEl.textContent = track.album || 'Unknown Album';
+                }
             }
+        } catch (error) {
+            console.error('Error restoring playback state:', error);
+        }
+    }
+
+    async savePlaybackState() {
+        if (!this.currentTrack) return;
+
+        const state = {
+            track: this.currentTrack,
+            time: this.audioElement.currentTime
+        };
+
+        try {
+            await fetch('/api/files/playback-state', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(state)
+            });
+        } catch (error) {
+            console.error('Error saving playback state:', error);
         }
     }
 
