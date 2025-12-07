@@ -199,4 +199,32 @@ router.get('/stream', (req, res) => {
     }
 });
 
+// Save playback state
+router.post('/playback-state', async (req, res) => {
+    try {
+        const playbackStateFile = path.join(__dirname, '../data/playback_state.json');
+        await fs.writeJson(playbackStateFile, req.body);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error saving playback state:', error);
+        res.status(500).json({ error: 'Error saving playback state' });
+    }
+});
+
+// Get playback state
+router.get('/playback-state', async (req, res) => {
+    try {
+        const playbackStateFile = path.join(__dirname, '../data/playback_state.json');
+        if (fs.existsSync(playbackStateFile)) {
+            const playbackState = await fs.readJson(playbackStateFile);
+            res.json(playbackState);
+        } else {
+            res.status(404).json({ error: 'Playback state not found' });
+        }
+    } catch (error) {
+        console.error('Error getting playback state:', error);
+        res.status(500).json({ error: 'Error getting playback state' });
+    }
+});
+
 module.exports = router;
